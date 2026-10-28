@@ -1,20 +1,32 @@
 //! The world and its single entry point, `World::step`.
 
 use std::collections::BTreeMap;
+use std::num::NonZeroU64;
 
 use crate::command::Command;
 use crate::entity::{Entity, EntityId, Position};
 use crate::event::{Event, Rejection};
+use crate::rng::Rng;
 use crate::time::Tick;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct World {
     tick: Tick,
+    rng: Rng,
     next_id: u64,
     entities: BTreeMap<EntityId, Entity>,
 }
 
 impl World {
+    pub fn new(seed: u64) -> World {
+        World {
+            tick: Tick::ZERO,
+            rng: Rng::new(seed),
+            next_id: 0,
+            entities: BTreeMap::new(),
+        }
+    }
+
     pub fn tick(&self) -> Tick {
         self.tick
     }
@@ -40,6 +52,7 @@ impl World {
             Command::Spawn { position } => self.spawn(*position),
             Command::Despawn { id } => self.despawn(*id),
             Command::Move { id, dx, dy } => self.move_entity(*id, *dx, *dy),
+            Command::Scatter { id, radius } => self.scatter(*id, *radius),
         }
     }
 
@@ -58,6 +71,14 @@ impl World {
             Some(_) => Event::Despawned { id },
             None => Event::Rejected(Rejection::UnknownEntity(id)),
         }
+    }
+
+    fn scatter(&mut self, id: EntityId, radius: u32) -> Event {
+        let radius = i64::from(radius);
+        let span = NonZeroU64::MIN.saturating_add(radius.unsigned_abs() * 2);
+        let dx = self.rng.next_below(span) as i64 - radius;
+        let dy = self.rng.next_below(span) as i64 - radius;
+        self.move_entity(id, dx, dy)
     }
 
     fn move_entity(&mut self, id: EntityId, dx: i64, dy: i64) -> Event {
@@ -90,7 +111,7 @@ mod tests {
 
     #[test]
     fn step_advances_tick_even_without_commands() {
-        let mut world = World::default();
+        let mut world = World::new(1);
         world.step(&[]);
         world.step(&[]);
         assert_eq!(world.tick(), Tick(2));
@@ -98,7 +119,7 @@ mod tests {
 
     #[test]
     fn spawn_creates_entity_with_fresh_ids() {
-        let mut world = World::default();
+        let mut world = World::new(1);
         let first = spawn_one(&mut world);
         let second = spawn_one(&mut world);
         assert_ne!(first, second);
@@ -107,7 +128,7 @@ mod tests {
 
     #[test]
     fn despawned_ids_are_not_reused() {
-        let mut world = World::default();
+        let mut world = World::new(1);
         let first = spawn_one(&mut world);
         world.step(&[Command::Despawn { id: first }]);
         let second = spawn_one(&mut world);
@@ -116,7 +137,7 @@ mod tests {
 
     #[test]
     fn move_updates_position() {
-        let mut world = World::default();
+        let mut world = World::new(1);
         let id = spawn_one(&mut world);
         let events = world.step(&[Command::Move { id, dx: 5, dy: -3 }]);
         let expected = Position { x: 5, y: -3 };
@@ -132,7 +153,7 @@ mod tests {
 
     #[test]
     fn unknown_entity_is_rejected() {
-        let mut world = World::default();
+        let mut world = World::new(1);
         let ghost = EntityId::new(99);
         let events = world.step(&[Command::Despawn { id: ghost }]);
         assert_eq!(
@@ -143,7 +164,7 @@ mod tests {
 
     #[test]
     fn overflowing_move_is_rejected_and_keeps_position() {
-        let mut world = World::default();
+        let mut world = World::new(1);
         let id = spawn_one(&mut world);
         world.step(&[Command::Move {
             id,
@@ -159,8 +180,23 @@ mod tests {
     }
 
     #[test]
+    fn scatter_stays_within_radius() {
+        let mut world = World::new(5);
+        let id = spawn_one(&mut world);
+        for _ in 0..200 {
+            world.step(&[Command::Scatter { id, radius: 0 }]);
+        }
+        assert_eq!(world.entity(id).map(|e| e.position), Some(ORIGIN));
+        let events = world.step(&[Command::Scatter { id, radius: 10 }]);
+        let Some(Event::Moved { position, .. }) = events.first() else {
+            panic!("unexpected events: {events:?}");
+        };
+        assert!(position.x.abs() <= 10 && position.y.abs() <= 10);
+    }
+
+    #[test]
     fn commands_apply_in_order_within_one_step() {
-        let mut world = World::default();
+        let mut world = World::new(1);
         let id = spawn_one(&mut world);
         let events = world.step(&[Command::Despawn { id }, Command::Move { id, dx: 1, dy: 1 }]);
         assert_eq!(events[1], Event::Rejected(Rejection::UnknownEntity(id)));

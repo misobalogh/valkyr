@@ -4,7 +4,20 @@ use crate::entity::{EntityId, Position};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
-    Spawn { position: Position },
-    Despawn { id: EntityId },
-    Move { id: EntityId, dx: i64, dy: i64 },
+    Spawn {
+        position: Position,
+    },
+    Despawn {
+        id: EntityId,
+    },
+    Move {
+        id: EntityId,
+        dx: i64,
+        dy: i64,
+    },
+    /// Moves the entity by a random offset of at most `radius` on each axis.
+    Scatter {
+        id: EntityId,
+        radius: u32,
+    },
 }
