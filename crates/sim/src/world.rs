@@ -6,6 +6,7 @@ use std::num::NonZeroU64;
 use crate::command::Command;
 use crate::entity::{Entity, EntityId, Position};
 use crate::event::{Event, Rejection};
+use crate::hash::StateHasher;
 use crate::rng::Rng;
 use crate::time::Tick;
 
@@ -37,6 +38,18 @@ impl World {
 
     pub fn entity_count(&self) -> usize {
         self.entities.len()
+    }
+
+    /// Hash over the observable world state. Equal hashes mean equal states.
+    pub fn state_hash(&self) -> u64 {
+        let mut hasher = StateHasher::new();
+        hasher.write_u64(self.tick.0);
+        for entity in self.entities.values() {
+            hasher.write_u64(entity.id.raw());
+            hasher.write_i64(entity.position.x);
+            hasher.write_i64(entity.position.y);
+        }
+        hasher.finish()
     }
 
     /// Applies the commands in order, advances one tick and returns one event
@@ -192,6 +205,15 @@ mod tests {
             panic!("unexpected events: {events:?}");
         };
         assert!(position.x.abs() <= 10 && position.y.abs() <= 10);
+    }
+
+    #[test]
+    fn hash_changes_when_an_entity_moves() {
+        let mut world = World::new(1);
+        let id = spawn_one(&mut world);
+        let before = world.state_hash();
+        world.step(&[Command::Move { id, dx: 1, dy: 0 }]);
+        assert_ne!(world.state_hash(), before);
     }
 
     #[test]
