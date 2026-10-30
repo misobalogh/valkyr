@@ -87,6 +87,9 @@ impl World {
     }
 
     fn scatter(&mut self, id: EntityId, radius: u32) -> Event {
+        if !self.entities.contains_key(&id) {
+            return Event::Rejected(Rejection::UnknownEntity(id));
+        }
         let radius = i64::from(radius);
         let span = NonZeroU64::MIN.saturating_add(radius.unsigned_abs() * 2);
         let dx = self.rng.next_below(span) as i64 - radius;
@@ -214,6 +217,22 @@ mod tests {
         let before = world.state_hash();
         world.step(&[Command::Move { id, dx: 1, dy: 0 }]);
         assert_ne!(world.state_hash(), before);
+    }
+
+    #[test]
+    fn rejected_scatter_does_not_consume_randomness() {
+        let mut world = World::new(5);
+        let before = world.rng.clone();
+        let ghost = EntityId::new(3);
+        let events = world.step(&[Command::Scatter {
+            id: ghost,
+            radius: 4,
+        }]);
+        assert_eq!(
+            events,
+            vec![Event::Rejected(Rejection::UnknownEntity(ghost))]
+        );
+        assert_eq!(world.rng, before);
     }
 
     #[test]
