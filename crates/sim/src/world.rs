@@ -235,6 +235,25 @@ mod tests {
         assert_eq!(world.rng, before);
     }
 
+    fn run_scenario(seed: u64) -> u64 {
+        let mut world = World::new(seed);
+        let id = spawn_one(&mut world);
+        for _ in 0..100 {
+            world.step(&[Command::Scatter { id, radius: 50 }]);
+        }
+        world.state_hash()
+    }
+
+    #[test]
+    fn same_seed_and_commands_give_same_hash() {
+        assert_eq!(run_scenario(11), run_scenario(11));
+    }
+
+    #[test]
+    fn different_seeds_give_different_hashes() {
+        assert_ne!(run_scenario(11), run_scenario(12));
+    }
+
     #[test]
     fn commands_apply_in_order_within_one_step() {
         let mut world = World::new(1);
