@@ -1,5 +1,7 @@
 //! Replay recording: a seed plus the commands of every tick.
 
+use std::fmt;
+
 use crate::command::Command;
 use crate::event::Event;
 use crate::world::World;
@@ -24,7 +26,42 @@ impl Replay {
     pub fn final_hash(&self) -> u64 {
         self.final_hash
     }
+
+    /// Reruns the recorded commands on a fresh world and checks that the final
+    /// state hash is the recorded one.
+    pub fn run(&self) -> Result<World, ReplayError> {
+        let mut world = World::new(self.seed);
+        for commands in &self.frames {
+            world.step(commands);
+        }
+        let actual = world.state_hash();
+        if actual != self.final_hash {
+            return Err(ReplayError::HashMismatch {
+                expected: self.final_hash,
+                actual,
+            });
+        }
+        Ok(world)
+    }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReplayError {
+    HashMismatch { expected: u64, actual: u64 },
+}
+
+impl fmt::Display for ReplayError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ReplayError::HashMismatch { expected, actual } => write!(
+                f,
+                "replay final hash mismatch: expected {expected:#018x}, got {actual:#018x}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ReplayError {}
 
 /// Steps a world while remembering every command it was given.
 #[derive(Debug, Clone)]
@@ -77,6 +114,39 @@ mod tests {
         let replay = recorder.finish();
         assert_eq!(replay.seed(), 3);
         assert_eq!(replay.frames(), &[vec![spawn], vec![]]);
+    }
+
+    #[test]
+    fn run_reproduces_the_recorded_hash() {
+        let mut recorder = Recorder::new(9);
+        let id = match recorder
+            .step(&[Command::Spawn {
+                position: Position { x: 0, y: 0 },
+            }])
+            .as_slice()
+        {
+            [Event::Spawned { id, .. }] => *id,
+            other => panic!("unexpected events: {other:?}"),
+        };
+        for _ in 0..20 {
+            recorder.step(&[Command::Scatter { id, radius: 30 }]);
+        }
+        let replay = recorder.finish();
+        let world = replay.run().unwrap();
+        assert_eq!(world.state_hash(), replay.final_hash());
+    }
+
+    #[test]
+    fn run_detects_a_tampered_hash() {
+        let mut recorder = Recorder::new(9);
+        recorder.step(&[]);
+        let mut replay = recorder.finish();
+        let expected = replay.final_hash ^ 1;
+        replay.final_hash = expected;
+        assert!(matches!(
+            replay.run(),
+            Err(ReplayError::HashMismatch { expected: e, .. }) if e == expected
+        ));
     }
 
     #[test]
