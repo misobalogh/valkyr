@@ -4,6 +4,14 @@ Co-op action-survival RPG set in a Norse-inspired world. Written in Rust.
 Up to about 8 players per server. Class-less builds defined by armor,
 upgrades and race.
 
+## Status
+
+M0 is done. M1 (simulation core) is implemented without external dependencies:
+fixed tick, seeded RNG, entity model, command/event step, state hash and an
+in-memory replay recorder and runner. Replay files on disk, property tests and
+criterion benchmarks wait for the dependency decisions (serialization format,
+proptest, criterion).
+
 ## Layout
 
 - `crates/sim`: deterministic game rules
