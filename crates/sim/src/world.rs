@@ -44,6 +44,8 @@ impl World {
     pub fn state_hash(&self) -> u64 {
         let mut hasher = StateHasher::new();
         hasher.write_u64(self.tick.0);
+        hasher.write_u64(self.rng.state());
+        hasher.write_u64(self.next_id);
         for entity in self.entities.values() {
             hasher.write_u64(entity.id.raw());
             hasher.write_i64(entity.position.x);
@@ -252,6 +254,23 @@ mod tests {
     #[test]
     fn different_seeds_give_different_hashes() {
         assert_ne!(run_scenario(11), run_scenario(12));
+    }
+
+    #[test]
+    fn hash_covers_rng_state() {
+        assert_ne!(World::new(1).state_hash(), World::new(2).state_hash());
+    }
+
+    #[test]
+    fn hash_covers_id_counter() {
+        let mut churned = World::new(1);
+        let id = spawn_one(&mut churned);
+        churned.step(&[Command::Despawn { id }]);
+        let mut idle = World::new(1);
+        idle.step(&[]);
+        idle.step(&[]);
+        assert_eq!(churned.tick(), idle.tick());
+        assert_ne!(churned.state_hash(), idle.state_hash());
     }
 
     #[test]
