@@ -5,5 +5,6 @@ pub mod event;
 pub mod hash;
 pub mod replay;
 pub mod rng;
+pub mod stats;
 pub mod time;
 pub mod world;
