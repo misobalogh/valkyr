@@ -1,4 +1,5 @@
 //! Deterministic game rules. No rendering, no I/O, no wall-clock time.
+pub mod affix;
 pub mod command;
 pub mod entity;
 pub mod event;
