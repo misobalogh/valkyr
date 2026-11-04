@@ -34,6 +34,8 @@ pub struct ItemDef {
     pub slot: Option<EquipSlot>,
     pub set: Option<SetId>,
     pub modifiers: Vec<Modifier>,
+    /// Upgrade track: level `n` applies the first `n` steps.
+    pub upgrades: Vec<Vec<Modifier>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,6 +68,7 @@ pub struct Catalog {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ItemInstance {
     pub item: ItemId,
+    pub upgrade_level: u8,
     /// Rolled modifiers, see `affix`.
     pub affixes: Vec<Modifier>,
 }

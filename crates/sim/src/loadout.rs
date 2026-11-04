@@ -16,6 +16,11 @@ pub enum LoadoutError {
         target: EquipSlot,
     },
     UnknownRace(RaceId),
+    UpgradeBeyondTrack {
+        item: ItemId,
+        level: u8,
+        max: usize,
+    },
 }
 
 impl fmt::Display for LoadoutError {
@@ -80,6 +85,17 @@ impl Loadout {
                 .get(&instance.item)
                 .ok_or(LoadoutError::UnknownItem(instance.item))?;
             modifiers.extend_from_slice(&def.modifiers);
+            let steps = def
+                .upgrades
+                .get(..usize::from(instance.upgrade_level))
+                .ok_or(LoadoutError::UpgradeBeyondTrack {
+                    item: instance.item,
+                    level: instance.upgrade_level,
+                    max: def.upgrades.len(),
+                })?;
+            for step in steps {
+                modifiers.extend_from_slice(step);
+            }
             modifiers.extend_from_slice(&instance.affixes);
         }
         Ok(modifiers)
@@ -122,6 +138,7 @@ mod tests {
                 id: HELM,
                 slot: Some(EquipSlot::Head),
                 modifiers: vec![flat(10)],
+                upgrades: vec![vec![flat(1)], vec![flat(2)]],
                 ..ItemDef::default()
             },
         );
@@ -164,6 +181,7 @@ mod tests {
         let first = ItemInstance {
             item: HELM,
             affixes: Vec::new(),
+            upgrade_level: 0,
         };
         loadout
             .equip(&catalog, EquipSlot::Head, first.clone())
@@ -218,6 +236,7 @@ mod tests {
         let rolled = ItemInstance {
             item: HELM,
             affixes: vec![flat(3)],
+            ..ItemInstance::default()
         };
         loadout.equip(&catalog, EquipSlot::Head, rolled).unwrap();
         let base = StatSheet::from([(HP, 1)]);
@@ -237,5 +256,40 @@ mod tests {
     fn unknown_race_is_an_error() {
         let result = Loadout::default().modifiers(&catalog(), RaceId(7));
         assert_eq!(result, Err(LoadoutError::UnknownRace(RaceId(7))));
+    }
+
+    fn upgraded(level: u8) -> ItemInstance {
+        ItemInstance {
+            item: HELM,
+            upgrade_level: level,
+            ..ItemInstance::default()
+        }
+    }
+
+    fn hp_with_helm_level(level: u8) -> Result<i64, LoadoutError> {
+        let mut loadout = Loadout::default();
+        let catalog = catalog();
+        loadout.equip(&catalog, EquipSlot::Head, upgraded(level))?;
+        let stats = loadout.stats(&catalog, DWARF, &StatSheet::new())?;
+        Ok(stats[&HP])
+    }
+
+    #[test]
+    fn upgrade_levels_apply_the_first_n_steps() {
+        assert_eq!(hp_with_helm_level(0), Ok(110));
+        assert_eq!(hp_with_helm_level(1), Ok(111));
+        assert_eq!(hp_with_helm_level(2), Ok(113));
+    }
+
+    #[test]
+    fn upgrade_beyond_the_track_is_an_error() {
+        assert_eq!(
+            hp_with_helm_level(3),
+            Err(LoadoutError::UpgradeBeyondTrack {
+                item: HELM,
+                level: 3,
+                max: 2,
+            })
+        );
     }
 }
