@@ -3,6 +3,7 @@ pub mod command;
 pub mod entity;
 pub mod event;
 pub mod hash;
+pub mod items;
 pub mod replay;
 pub mod rng;
 pub mod stats;
