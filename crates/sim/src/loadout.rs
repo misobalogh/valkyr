@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use crate::items::{Catalog, EquipSlot, ItemId, ItemInstance, RaceId};
+use crate::items::{Catalog, EquipSlot, ItemId, ItemInstance, RaceId, SetId};
 use crate::stats::{Modifier, StatSheet, evaluate};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,6 +16,7 @@ pub enum LoadoutError {
         target: EquipSlot,
     },
     UnknownRace(RaceId),
+    UnknownSet(SetId),
     UpgradeBeyondTrack {
         item: ItemId,
         level: u8,
@@ -79,12 +80,17 @@ impl Loadout {
             .get(&race)
             .ok_or(LoadoutError::UnknownRace(race))?;
         let mut modifiers = race_def.modifiers.clone();
+        let mut set_pieces: BTreeMap<SetId, u8> = BTreeMap::new();
         for instance in self.slots.values() {
             let def = catalog
                 .items
                 .get(&instance.item)
                 .ok_or(LoadoutError::UnknownItem(instance.item))?;
             modifiers.extend_from_slice(&def.modifiers);
+            if let Some(set) = def.set {
+                let count = set_pieces.entry(set).or_insert(0);
+                *count = count.saturating_add(1);
+            }
             let steps = def
                 .upgrades
                 .get(..usize::from(instance.upgrade_level))
@@ -97,6 +103,15 @@ impl Loadout {
                 modifiers.extend_from_slice(step);
             }
             modifiers.extend_from_slice(&instance.affixes);
+        }
+        for (set_id, count) in set_pieces {
+            let set = catalog
+                .sets
+                .get(&set_id)
+                .ok_or(LoadoutError::UnknownSet(set_id))?;
+            for bonus in set.bonuses.iter().filter(|b| b.pieces <= count) {
+                modifiers.extend_from_slice(&bonus.modifiers);
+            }
         }
         Ok(modifiers)
     }
@@ -114,12 +129,14 @@ impl Loadout {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::items::{ItemDef, RaceDef};
+    use crate::items::{ItemDef, RaceDef, SetBonus, SetDef};
     use crate::stats::{ModifierKind, StatId};
 
     const HELM: ItemId = ItemId(1);
     const ORE: ItemId = ItemId(2);
+    const CHEST: ItemId = ItemId(3);
     const DWARF: RaceId = RaceId(1);
+    const SET: SetId = SetId(1);
     const HP: StatId = StatId(1);
 
     fn flat(value: i64) -> Modifier {
@@ -137,9 +154,29 @@ mod tests {
             ItemDef {
                 id: HELM,
                 slot: Some(EquipSlot::Head),
+                set: Some(SET),
                 modifiers: vec![flat(10)],
                 upgrades: vec![vec![flat(1)], vec![flat(2)]],
                 ..ItemDef::default()
+            },
+        );
+        catalog.items.insert(
+            CHEST,
+            ItemDef {
+                id: CHEST,
+                slot: Some(EquipSlot::Chest),
+                set: Some(SET),
+                ..ItemDef::default()
+            },
+        );
+        catalog.sets.insert(
+            SET,
+            SetDef {
+                id: SET,
+                bonuses: vec![SetBonus {
+                    pieces: 2,
+                    modifiers: vec![flat(50)],
+                }],
             },
         );
         catalog.races.insert(
@@ -290,6 +327,36 @@ mod tests {
                 level: 3,
                 max: 2,
             })
+        );
+    }
+
+    #[test]
+    fn set_bonus_needs_enough_pieces() {
+        let mut loadout = Loadout::default();
+        let catalog = catalog();
+        loadout
+            .equip(&catalog, EquipSlot::Head, upgraded(0))
+            .unwrap();
+        let one_piece = loadout.stats(&catalog, DWARF, &StatSheet::new()).unwrap();
+        loadout
+            .equip(&catalog, EquipSlot::Chest, instance(CHEST))
+            .unwrap();
+        let two_pieces = loadout.stats(&catalog, DWARF, &StatSheet::new()).unwrap();
+        assert_eq!(one_piece[&HP], 110);
+        assert_eq!(two_pieces[&HP], 160);
+    }
+
+    #[test]
+    fn item_with_unknown_set_is_an_error() {
+        let mut catalog = catalog();
+        catalog.sets.clear();
+        let mut loadout = Loadout::default();
+        loadout
+            .equip(&catalog, EquipSlot::Head, upgraded(0))
+            .unwrap();
+        assert_eq!(
+            loadout.modifiers(&catalog, DWARF),
+            Err(LoadoutError::UnknownSet(SET))
         );
     }
 }
