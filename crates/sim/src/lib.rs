@@ -6,6 +6,7 @@ pub mod event;
 pub mod hash;
 pub mod items;
 pub mod loadout;
+pub mod recipe;
 pub mod replay;
 pub mod rng;
 pub mod stats;
