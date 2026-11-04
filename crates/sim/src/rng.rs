@@ -35,6 +35,21 @@ impl Rng {
             }
         }
     }
+
+    /// Uniform index in `0..len`, or `None` when `len` is zero.
+    pub fn next_index(&mut self, len: usize) -> Option<usize> {
+        let bound = NonZeroU64::new(u64::try_from(len).ok()?)?;
+        usize::try_from(self.next_below(bound)).ok()
+    }
+
+    /// Uniform value in `min..=max`, or `None` when `min > max` or the range
+    /// is wider than `u64::MAX`.
+    pub fn next_in_range(&mut self, min: i64, max: i64) -> Option<i64> {
+        let span = i128::from(max) - i128::from(min) + 1;
+        let bound = NonZeroU64::new(u64::try_from(span).ok()?)?;
+        let offset = self.next_below(bound);
+        i64::try_from(i128::from(min) + i128::from(offset)).ok()
+    }
 }
 
 #[cfg(test)]
@@ -75,5 +90,33 @@ mod tests {
         let mut rng = Rng::new(7);
         let bound = NonZeroU64::new(1).unwrap();
         assert_eq!(rng.next_below(bound), 0);
+    }
+
+    #[test]
+    fn next_index_is_none_for_empty() {
+        assert_eq!(Rng::new(1).next_index(0), None);
+    }
+
+    #[test]
+    fn next_index_stays_in_bounds() {
+        let mut rng = Rng::new(1);
+        for _ in 0..500 {
+            assert!(rng.next_index(7).is_some_and(|i| i < 7));
+        }
+    }
+
+    #[test]
+    fn next_in_range_includes_both_ends() {
+        let mut rng = Rng::new(2);
+        let values: Vec<i64> = (0..200).filter_map(|_| rng.next_in_range(-1, 1)).collect();
+        assert!(values.contains(&-1) && values.contains(&0) && values.contains(&1));
+        assert!(values.iter().all(|v| (-1..=1).contains(v)));
+    }
+
+    #[test]
+    fn next_in_range_rejects_inverted_and_huge_ranges() {
+        let mut rng = Rng::new(2);
+        assert_eq!(rng.next_in_range(5, 4), None);
+        assert_eq!(rng.next_in_range(i64::MIN, i64::MAX), None);
     }
 }
