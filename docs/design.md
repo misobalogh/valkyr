@@ -1,6 +1,7 @@
 # Design
 
 Skeleton. Sections are filled in as the matching milestone starts.
+Early thoughts and open questions live in [ideas.md](ideas.md).
 
 ## Pillars
 
