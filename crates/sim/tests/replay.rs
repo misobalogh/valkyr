@@ -5,7 +5,7 @@ use sim::entity::{EntityId, Position};
 use sim::replay::{Recorder, Replay};
 use sim::time::Tick;
 
-const SEED: u64 = 0x5EED_0F_FA11;
+const SEED: u64 = 0x005E_ED0F_FA11;
 const GOLDEN_HASH: u64 = 0x260dcf956763fd07;
 
 fn record_scenario() -> Replay {
