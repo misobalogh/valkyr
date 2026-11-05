@@ -6,11 +6,20 @@ upgrades and race.
 
 ## Status
 
-M0 is done. M1 (simulation core) is implemented without external dependencies:
-fixed tick, seeded RNG, entity model, command/event step, state hash and an
-in-memory replay recorder and runner. Replay files on disk, property tests and
-criterion benchmarks wait for the dependency decisions (serialization format,
-proptest, criterion).
+- M0 Foundations: done.
+- M1 Simulation core: done. Fixed tick, seeded RNG, entity model, command/event
+  step, state hash, in-memory replay recorder and runner.
+- M2 Stats, items, loadout: modifier pipeline, equipment slots, set bonuses,
+  upgrade tracks, race modifiers, affix rolling. In progress: content loading.
+- M3 Crafting and economy: recipe graph with cycle detection and raw cost,
+  weight-limited inventory, loot tables with rarity tiers.
+- M4 Movement and combat: controller (sprint, slide, wall-run, glide, jump),
+  hit detection, damage types, poise and stagger, status effects. These are
+  pure modules for now and are not wired into `World` yet.
+
+Everything so far uses no external dependencies. Content loading (RON), replay
+files on disk, property tests and criterion benchmarks wait for the dependency
+decisions.
 
 ## Layout
 

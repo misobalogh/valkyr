@@ -25,3 +25,15 @@ MMO scale, PvP balance, mobile, microtransactions.
 - World, building and defense
 - Dungeons and caves
 - Content pipeline and tooling
+
+## Implemented so far (sim)
+
+- Modifiers evaluate in a fixed order: flat, then summed percent, then each
+  multiplicative percent. Collection order never matters.
+- Builds are computed from race, equipped items, item upgrade level, rolled
+  affixes and set bonuses. There are no classes.
+- Crafting costs roll up through the recipe graph to raw materials.
+- Combat resolves damage types against per-type resistances. Poise damage that
+  empties the bar staggers the target. Damage-over-time effects are one per
+  damage type.
+
