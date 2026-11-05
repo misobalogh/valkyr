@@ -4,6 +4,7 @@ pub mod command;
 pub mod entity;
 pub mod event;
 pub mod hash;
+pub mod inventory;
 pub mod items;
 pub mod loadout;
 pub mod recipe;
