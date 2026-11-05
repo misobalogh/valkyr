@@ -21,6 +21,16 @@ Everything so far uses no external dependencies. Content loading (RON), replay
 files on disk, property tests and criterion benchmarks wait for the dependency
 decisions.
 
+## Try it
+
+Two text demos, no graphics yet. One line is one simulation tick.
+
+    cargo run -p tools -- move   # sprint, slide, jump, glide
+    cargo run -p tools -- wolf   # sword, fire, frost against a frost wolf
+
+Example for `move`: `10 f sprint`, then `slide f`, then `jump f sprint`, then
+`30 f glide`. Type `q` to quit.
+
 ## Layout
 
 - `crates/sim`: deterministic game rules
