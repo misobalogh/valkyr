@@ -11,6 +11,7 @@ pub mod items;
 pub mod loadout;
 pub mod loot;
 pub mod movement;
+pub mod poise;
 pub mod recipe;
 pub mod replay;
 pub mod rng;
