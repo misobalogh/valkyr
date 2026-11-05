@@ -7,6 +7,7 @@ pub mod hash;
 pub mod inventory;
 pub mod items;
 pub mod loadout;
+pub mod loot;
 pub mod recipe;
 pub mod replay;
 pub mod rng;
