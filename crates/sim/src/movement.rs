@@ -14,6 +14,11 @@ pub struct MovementParams {
     pub max_stamina: i64,
     pub sprint_stamina_cost: i64,
     pub stamina_regen: i64,
+    pub slide_speed: i64,
+    pub slide_ticks: u32,
+    pub slide_stamina_cost: i64,
+    pub wall_run_speed: i64,
+    pub wall_run_ticks: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,6 +27,8 @@ pub enum MoveMode {
     Sprint,
     Air,
     Glide,
+    Slide { ticks_left: u32 },
+    WallRun { ticks_left: u32 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,6 +40,8 @@ pub struct MoverState {
     pub vz: i64,
     pub mode: MoveMode,
     pub stamina: i64,
+    /// Set once a wall-run ended; cleared on landing. Stops endless wall-runs.
+    pub wall_run_spent: bool,
 }
 
 impl MoverState {
@@ -44,6 +53,7 @@ impl MoverState {
             vz: 0,
             mode: MoveMode::Ground,
             stamina: params.max_stamina,
+            wall_run_spent: false,
         }
     }
 }
@@ -56,6 +66,8 @@ pub struct MoveInput {
     pub sprint: bool,
     pub jump: bool,
     pub glide: bool,
+    pub slide: bool,
+    pub wall_contact: bool,
 }
 
 impl MoveInput {
@@ -79,10 +91,35 @@ pub fn step(params: &MovementParams, state: &MoverState, input: &MoveInput) -> M
 }
 
 fn is_grounded(mode: MoveMode) -> bool {
-    matches!(mode, MoveMode::Ground | MoveMode::Sprint)
+    matches!(
+        mode,
+        MoveMode::Ground | MoveMode::Sprint | MoveMode::Slide { .. }
+    )
 }
 
 fn ground_step(params: &MovementParams, state: &mut MoverState, input: &MoveInput) {
+    if let MoveMode::Slide { ticks_left } = state.mode
+        && ticks_left > 1
+    {
+        state.mode = MoveMode::Slide {
+            ticks_left: ticks_left - 1,
+        };
+        move_horizontal(state, input, params.slide_speed);
+        return;
+    }
+    let can_slide = state.mode == MoveMode::Sprint
+        && input.slide
+        && input.is_moving()
+        && params.slide_ticks > 0
+        && state.stamina >= params.slide_stamina_cost;
+    if can_slide {
+        state.mode = MoveMode::Slide {
+            ticks_left: params.slide_ticks,
+        };
+        state.stamina -= params.slide_stamina_cost;
+        move_horizontal(state, input, params.slide_speed);
+        return;
+    }
     let sprinting = input.sprint && input.is_moving() && state.stamina > 0;
     let speed = if sprinting {
         state.mode = MoveMode::Sprint;
@@ -103,6 +140,9 @@ fn ground_step(params: &MovementParams, state: &mut MoverState, input: &MoveInpu
 }
 
 fn air_step(params: &MovementParams, state: &mut MoverState, input: &MoveInput) {
+    if wall_run_step(params, state, input) {
+        return;
+    }
     state.vz = state.vz.saturating_sub(params.gravity);
     state.mode = MoveMode::Air;
     if input.glide && state.vz < 0 {
@@ -114,8 +154,30 @@ fn air_step(params: &MovementParams, state: &mut MoverState, input: &MoveInput) 
         state.z = 0;
         state.vz = 0;
         state.mode = MoveMode::Ground;
+        state.wall_run_spent = false;
     }
     move_horizontal(state, input, params.air_speed);
+}
+
+/// Returns true when the wall-run handled this tick.
+fn wall_run_step(params: &MovementParams, state: &mut MoverState, input: &MoveInput) -> bool {
+    let left = match state.mode {
+        MoveMode::WallRun { ticks_left } => ticks_left,
+        _ if !state.wall_run_spent => params.wall_run_ticks,
+        _ => 0,
+    };
+    if input.wall_contact && input.sprint && left > 0 {
+        state.mode = MoveMode::WallRun {
+            ticks_left: left - 1,
+        };
+        state.vz = 0;
+        move_horizontal(state, input, params.wall_run_speed);
+        return true;
+    }
+    if matches!(state.mode, MoveMode::WallRun { .. }) {
+        state.wall_run_spent = true;
+    }
+    false
 }
 
 fn move_horizontal(state: &mut MoverState, input: &MoveInput, speed: i64) {
@@ -147,6 +209,11 @@ mod tests {
             max_stamina: 100,
             sprint_stamina_cost: 10,
             stamina_regen: 5,
+            slide_speed: 400,
+            slide_ticks: 3,
+            slide_stamina_cost: 20,
+            wall_run_speed: 280,
+            wall_run_ticks: 4,
         }
     }
 
@@ -259,5 +326,113 @@ mod tests {
         };
         let state = step(&params(), &MoverState::new(&params()), &input);
         assert_eq!(state.mode, MoveMode::Air);
+    }
+
+    fn sprinting_state() -> MoverState {
+        step(
+            &params(),
+            &MoverState::new(&params()),
+            &MoveInput {
+                sprint: true,
+                ..forward()
+            },
+        )
+    }
+
+    #[test]
+    fn sprint_slide_runs_for_its_duration() {
+        let slide = MoveInput {
+            slide: true,
+            ..forward()
+        };
+        let mut state = step(&params(), &sprinting_state(), &slide);
+        assert_eq!(state.mode, MoveMode::Slide { ticks_left: 3 });
+        assert_eq!(state.stamina, 70);
+        let start_x = state.x;
+        state = step(&params(), &state, &forward());
+        state = step(&params(), &state, &forward());
+        assert_eq!(state.mode, MoveMode::Slide { ticks_left: 1 });
+        assert_eq!(state.x - start_x, 800);
+        state = step(&params(), &state, &forward());
+        assert_eq!(state.mode, MoveMode::Ground);
+    }
+
+    #[test]
+    fn slide_needs_a_sprint_and_stamina() {
+        let slide = MoveInput {
+            slide: true,
+            ..forward()
+        };
+        let walking = step(&params(), &MoverState::new(&params()), &slide);
+        assert_eq!(walking.mode, MoveMode::Ground);
+        let mut tired = sprinting_state();
+        tired.stamina = 19;
+        assert_ne!(
+            step(&params(), &tired, &slide).mode,
+            MoveMode::Slide { ticks_left: 3 }
+        );
+    }
+
+    #[test]
+    fn jumping_cancels_a_slide() {
+        let slide = MoveInput {
+            slide: true,
+            ..forward()
+        };
+        let sliding = step(&params(), &sprinting_state(), &slide);
+        let jump = MoveInput {
+            jump: true,
+            ..forward()
+        };
+        assert_eq!(step(&params(), &sliding, &jump).mode, MoveMode::Air);
+    }
+
+    fn wall_run_input() -> MoveInput {
+        MoveInput {
+            sprint: true,
+            wall_contact: true,
+            ..forward()
+        }
+    }
+
+    fn airborne(height: i64) -> MoverState {
+        let mut state = MoverState::new(&params());
+        state.z = height;
+        state.mode = MoveMode::Air;
+        state
+    }
+
+    #[test]
+    fn wall_run_holds_height_then_drops() {
+        let mut state = airborne(1_000);
+        for _ in 0..4 {
+            state = step(&params(), &state, &wall_run_input());
+            assert_eq!(state.z, 1_000);
+        }
+        assert_eq!(state.x, 4 * 280);
+        state = step(&params(), &state, &wall_run_input());
+        assert!(state.z < 1_000);
+        assert_eq!(state.mode, MoveMode::Air);
+    }
+
+    #[test]
+    fn wall_run_cannot_restart_before_landing() {
+        let mut state = airborne(10_000);
+        for _ in 0..6 {
+            state = step(&params(), &state, &wall_run_input());
+        }
+        assert!(state.wall_run_spent);
+        let height = state.z;
+        state = step(&params(), &state, &wall_run_input());
+        assert!(state.z < height);
+    }
+
+    #[test]
+    fn landing_clears_the_wall_run_lock() {
+        let mut state = airborne(100);
+        state.wall_run_spent = true;
+        let landed = run(state, MoveInput::default(), 20);
+        assert_eq!(landed.mode, MoveMode::Ground);
+        assert!(!landed.wall_run_spent);
     }
 }
