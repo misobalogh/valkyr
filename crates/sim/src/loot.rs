@@ -38,7 +38,7 @@ pub struct LootTable {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Drop {
+pub struct LootDrop {
     pub item: ItemId,
     pub rarity: Rarity,
     pub affixes: Vec<Modifier>,
@@ -67,7 +67,7 @@ impl fmt::Display for LootError {
 impl std::error::Error for LootError {}
 
 impl LootTable {
-    pub fn roll(&self, rng: &mut Rng, affix_pool: &[AffixDef]) -> Result<Drop, LootError> {
+    pub fn roll(&self, rng: &mut Rng, affix_pool: &[AffixDef]) -> Result<LootDrop, LootError> {
         if self.entries.is_empty() {
             return Err(LootError::NoEntries);
         }
@@ -79,7 +79,7 @@ impl LootTable {
         let tier =
             pick_weighted(rng, &self.tiers, |t| t.weight).ok_or(LootError::ZeroTotalWeight)?;
         let affixes = roll_affixes(rng, affix_pool, tier.affix_count)?;
-        Ok(Drop {
+        Ok(LootDrop {
             item: entry.item,
             rarity: tier.rarity,
             affixes,
@@ -174,7 +174,7 @@ mod tests {
     #[test]
     fn weights_shape_the_distribution() {
         let mut rng = Rng::new(1);
-        let drops: Vec<Drop> = (0..4_000)
+        let drops: Vec<LootDrop> = (0..4_000)
             .map(|_| table().roll(&mut rng, &pool()).unwrap())
             .collect();
         let heavy = drops.iter().filter(|d| d.item == ItemId(1)).count();
