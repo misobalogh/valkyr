@@ -16,5 +16,6 @@ pub mod recipe;
 pub mod replay;
 pub mod rng;
 pub mod stats;
+pub mod status;
 pub mod time;
 pub mod world;
